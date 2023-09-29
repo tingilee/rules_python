@@ -26,6 +26,9 @@ CPPFLAGS = "CPPFLAGS"
 
 COMMAND_LINE_TOOLS_PATH_SLUG = "commandlinetools"
 
+def _pkg_name(requirement):
+    return requirement.split(" ")[0].split("=")[0].split("[")[0]
+
 def _construct_pypath(rctx):
     """Helper function to construct a PYTHONPATH.
 
@@ -460,6 +463,14 @@ def _pip_repository_impl(rctx):
     if rctx.attr.python_interpreter_target:
         config["python_interpreter_target"] = str(rctx.attr.python_interpreter_target)
 
+    if rctx.attr.patches:
+        requirement_names = [_pkg_name(requirement) for _, requirement in parsed_requirements_txt.requirements]
+        for name in rctx.attr.patches:
+            if name not in requirement_names:
+                fail("One or more patches for package '{}' are specified but no such requirement was found in the lockfile '{}'".format(name, requirements_txt))
+
+        config["patches"] = rctx.attr.patches
+
     if rctx.attr.incompatible_generate_aliases:
         _pkg_aliases(rctx, rctx.attr.name, bzl_packages)
 
@@ -606,6 +617,14 @@ wheels are fetched/built only for the targets specified by 'build/run/test'.
         allow_single_file = True,
         doc = "Override the requirements_lock attribute when the host platform is Windows",
     ),
+    "patches": attr.string_list_dict(
+        doc = """
+Patches to be applied to packages in this pip repository as a dictionary mapping
+a package name to a list of labels pointing to patch files. The paths within the
+files are relative to the 'site-packages' directory into which the wheel is
+extracted.
+""",
+    ),
     "_template": attr.label(
         default = ":pip_repository_requirements.bzl.tmpl",
     ),
@@ -676,6 +695,10 @@ def _whl_library_impl(rctx):
             "--annotation",
             rctx.path(rctx.attr.annotation),
         ])
+    pkg_name = _pkg_name(rctx.attr.requirement)
+    if pkg_name in rctx.attr.patches:
+        patch_files = [str(rctx.path(Label(path)).realpath) for path in rctx.attr.patches[pkg_name]]
+        args.extend(["--patch-file=" + file for file in patch_files])
 
     args = _parse_optional_attrs(rctx, args)
 
@@ -707,6 +730,14 @@ whl_library_attrs = {
     "requirement": attr.string(
         mandatory = True,
         doc = "Python requirement string describing the package to make available",
+    ),
+    "patches": attr.string_list_dict(
+        doc = """
+Patches to be applied to packages in this pip repository as a dictionary mapping
+a package name to a list of labels pointing to patch files. The paths within the
+files are relative to the 'site-packages' directory into which the wheel is
+extracted.
+""",
     ),
 }
 

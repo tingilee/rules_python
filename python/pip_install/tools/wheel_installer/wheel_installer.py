@@ -298,6 +298,9 @@ def _extract_wheel(
     repo_prefix: str,
     installation_dir: Path = Path("."),
     annotation: Optional[annotation.Annotation] = None,
+    patches: Optional[List[os.PathLike]] = None,
+    patch_args: Optional[List[os.PathLike]] = None,
+    patch_tool: Optional[str] = None,
 ) -> None:
     """Extracts wheel into given directory and creates py_library and filegroup targets.
 
@@ -381,6 +384,11 @@ def _extract_wheel(
         )
         build_file.write(contents)
 
+    if patches:
+        base_cmd = [patch_tool or "patch"] + (patch_args or ["-p1"]) + ["--input"]
+        for patch in patches:
+            subprocess.run(base_cmd + [patch], check=True, cwd=installation_dir)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -396,6 +404,20 @@ def main() -> None:
         "--annotation",
         type=annotation.annotation_from_str_path,
         help="A json encoded file containing annotations for rendered packages.",
+    )
+    parser.add_argument(
+        "--patch-file",
+        action="append",
+        help="The patch files to apply. Can be repeated for multiple patches.",
+    )
+    parser.add_argument(
+        "--patch-arg",
+        action="append",
+        help="Arguments to pass to the patch tool. Can be repeated for multiple arguments.",
+    )
+    parser.add_argument(
+        "--patch-tool",
+       help="Path of the patch tool to execute for applying patches.",
     )
     arguments.parse_common_args(parser)
     args = parser.parse_args()
@@ -445,6 +467,9 @@ def main() -> None:
         enable_implicit_namespace_pkgs=args.enable_implicit_namespace_pkgs,
         repo_prefix=args.repo_prefix,
         annotation=args.annotation,
+        patches=args.patch_file,
+        patch_args=args.patch_arg,
+        patch_tool=args.patch_tool,
     )
 
 
